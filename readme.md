@@ -29,8 +29,13 @@ They were generated from the gRPC Basic tutorial code project's **.proto** file 
 
 <pre>
 <code>
-     protoc --csharp_out=routeguide --grcp_out=routeguide --plugin=protoc-gen-grcp={directory_your_grpc_csharp_plugin_is_installed}/1.26/grpc_csharp_plugin routeguide/route_guide.proto
+     protoc 
+     --csharp_out={directory to place output .cs message type file} 
+     --grcp_out={directory to place output .cs grpc file} 
+     --plugin=protoc-gen-grcp={directory_your_grpc_csharp_plugin_is_installed}/grpc_csharp_plugin(.exe if windows) 
+     {directory containing the .proto file}/route_guide.proto
 </code>
+ 
 </pre>
 
 
@@ -62,6 +67,11 @@ enqueuing it to run on the main UI thread.
 ![protoc unity programs and plugins](UnityBasicGRPC.png)
 
 1. In a separate terminal or console window, start the grpc basic tutorial server 
+   
+   ---BE AWARE that the gRPC Basic Tutorial project, by default, is setup such that the RouteGuide**Server** listens only for 
+   client connections using LOCALHOST address. So.. if you setup a server on one machine in your network and run the Unity 
+   client on another - your connection may not work.  To resolve, you need to adjust the RouteGuideServer's 
+   C# ServerPort/(golang) net.Listen value, etc.. to use a value like "0.0.0.0:10000", instead of "localhost:10000" so that connections can be accepted from anywhere. 
 2. Start the Unity3D editor and load the Unity Basic GRPC project
 3. Locate the (ScriptController) gameobject in the hierarchy window and in the inspector, 
 locate it's attached RouteGuideUIHandler script.
