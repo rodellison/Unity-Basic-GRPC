@@ -1,7 +1,7 @@
 # Unity Basic gRPC
 
 This Unity 2019.4 project is a simple learning project to integrate Unity3D visuals
-with backend gRPC (**Google Protobuffers**) APIs. 
+with backend gRPC APIs using (**Google Protocol buffers**). 
 
 It is inspired from this [medium.com article](https://medium.com/@shadabambat1/basic-client-server-communication-using-unity-grpc-f4a3c2cf819c).
 
