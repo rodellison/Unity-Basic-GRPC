@@ -17,6 +17,8 @@ public class RouteGuideUnityClient
     private readonly Channel _channel;
     private readonly string _server;
     private readonly TextMeshProUGUI myTextMeshProUGui;
+    private string textBuffer;
+    private bool isBusy;
 
     internal RouteGuideUnityClient(string host, string port, TextMeshProUGUI inTextMeshProUGui)
     {
@@ -26,6 +28,16 @@ public class RouteGuideUnityClient
         myTextMeshProUGui = inTextMeshProUGui;
     }
     
+    /// <summary>
+    /// AddTextToUI is the method that will handle adding text to the UI. This method can be called
+    /// when not coming from a separate async run thread. 
+    /// </summary>
+    /// <param name="textData">Text data to provide to the TMP Text control</param>
+    private void AddTextToUi(string textData)
+    {
+        myTextMeshProUGui.SetText(textData);
+    }
+
     /// <summary>
     /// The AddTMPTextOnMainThread IEnumerator is a coroutine to be used (by way of another component -
     /// UnityMainThreadDispatcher), as the code to run on the main thread, which updates the Unity UI.
@@ -37,16 +49,17 @@ public class RouteGuideUnityClient
         myTextMeshProUGui.SetText(textDataToAdd);
         yield return null;
     }
+
     /// <summary>
-    /// AddTextToUI is the method that will handle calling the UnityMainThreadDispatcher, which enqueues
+    /// AddTextToUIFromAsync is the method that will handle calling the UnityMainThreadDispatcher, which enqueues
     /// coroutines that need to run on the main thread.
-    /// This routine is needed as in most cases, the gRPC methods use TASKS, which do their asynchronous work on
-    /// threads other than Unity's main thread.
+    /// This routine is needed to update the UI while processing is occuring in a thread
+    /// other than Unity's main thread.
     /// </summary>
     /// <param name="textData">Text data to provide to the Enqueued IEnumerator function</param>
-    private void AddTextToUi(string textData)
+    private void AddTextToUiFromAsync(string textData)
     {
-        UnityMainThreadDispatcher.Instance().Enqueue(AddTMPTextOnMainThread(textData));
+      UnityMainThreadDispatcher.Instance().Enqueue(AddTMPTextOnMainThread(textData));
     }
 
     /// <summary>
@@ -94,6 +107,7 @@ public class RouteGuideUnityClient
         try
         {
             var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            //Sending and Receiving will be sequential - send first, then receive stream response second
             var response = _client.ListFeatures(areaOfInterest, cancellationToken: cts.Token);
             while (await response.ResponseStream.MoveNext())
             {
@@ -104,11 +118,12 @@ public class RouteGuideUnityClient
                     //Updating the UI here as each new Message from the stream comes in is visually nice/responsive,
                     //but it does have a pretty dramatic impact on Unity app performance, resulting in reduced framerate while
                     //updates are streaming in. 
-                    //The streamLoadUI bool option parm passed in controls whether this happens. 
+                    //The streamLoadUI bool option parameter passed in controls whether this happens. 
                     if (streamLoadUI)
                         AddTextToUi(responseText.ToString());
                 }
             }
+
             //Updating all the 'accumulated' Messages from the response stream is less responsive, but 
             //does allow the Unity app to maintain high framerate
             if (!streamLoadUI)
@@ -137,6 +152,7 @@ public class RouteGuideUnityClient
         try
         {
             var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+           //Sending and Receiving will be sequential - send/stream all first, then receive
             var thisStream = _client.RecordRoute(cancellationToken: cts.Token);
             foreach (var t in pointsOfInterest)
             {
@@ -180,6 +196,8 @@ public class RouteGuideUnityClient
         {
             var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
             var thisStream = _client.RouteChat(cancellationToken: cts.Token);
+            //Using a Task.Run(async ()...here as we essentially want (2) things to run in parallel, and
+            //only return when both are complete.
             var responseReaderTask = Task.Run(async () =>
             {
                 StringBuilder responseText = new StringBuilder();
@@ -189,14 +207,17 @@ public class RouteGuideUnityClient
                     //Updating the UI here as each new Message from the stream comes in is visually nice/responsive,
                     //but it does have a pretty dramatic impact on Unity app performance, resulting in reduced framerate while
                     //updates are streaming in. 
-                    //The streamLoadUI bool option parm passed in controls whether this happens. 
+                    //The streamLoadUI bool parameter passed in controls whether this happens. 
                     if (streamLoadUI)
-                        AddTextToUi(responseText.ToString());
+                        //This AddText.. method is different, its capable of getting the UI updated from a different thread.
+                        AddTextToUiFromAsync(responseText.ToString());
                 }
+
                 //Updating all the 'accumulated' Messages from the response stream is less responsive, but 
                 //does allow the Unity app to maintain high framerate
                 if (!streamLoadUI)
-                    AddTextToUi(responseText.ToString());
+                    //This AddText.. method is different, its capable of getting the UI updated from a different thread.
+                    AddTextToUiFromAsync(responseText.ToString());
 #if DEBUG
                 Debug.Log("RouteChat RECEIVE messages complete");
 #endif
