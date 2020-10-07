@@ -16,51 +16,18 @@ public class RouteGuideUnityClient
     private readonly RouteGuide.RouteGuideClient _client;
     private readonly Channel _channel;
     private readonly string _server;
-    private readonly TextMeshProUGUI myTextMeshProUGui;
+    private readonly RouteGuideUIHandler _myRouteGuideUiHandler;
     private string textBuffer;
     private bool isBusy;
 
-    internal RouteGuideUnityClient(string host, string port, TextMeshProUGUI inTextMeshProUGui)
+    internal RouteGuideUnityClient(string host, string port, RouteGuideUIHandler inRouteGuideUIHandler)
     {
         _server = host + ":" + port;
         _channel = new Channel(_server, ChannelCredentials.Insecure);
         _client = new RouteGuide.RouteGuideClient(_channel);
-        myTextMeshProUGui = inTextMeshProUGui;
-    }
-    
-    /// <summary>
-    /// AddTextToUI is the method that will handle adding text to the UI. This method can be called
-    /// when not coming from a separate async run thread. 
-    /// </summary>
-    /// <param name="textData">Text data to provide to the TMP Text control</param>
-    private void AddTextToUi(string textData)
-    {
-        myTextMeshProUGui.SetText(textData);
+        _myRouteGuideUiHandler = inRouteGuideUIHandler;
     }
 
-    /// <summary>
-    /// The AddTMPTextOnMainThread IEnumerator is a coroutine to be used (by way of another component -
-    /// UnityMainThreadDispatcher), as the code to run on the main thread, which updates the Unity UI.
-    /// </summary>
-    /// <param name="textDataToAdd">Text data to have added to the TMP Text UI component</param>
-    /// <returns></returns>
-    private IEnumerator AddTMPTextOnMainThread(string textDataToAdd)
-    {
-        myTextMeshProUGui.SetText(textDataToAdd);
-        yield return null;
-    }
-
-    /// <summary>
-    /// AddTextToUIFromAsync is the method that will handle calling the UnityMainThreadDispatcher, which enqueues
-    /// coroutines that need to run on the main thread.
-    /// This routine is needed to update the UI while processing is occuring in a thread
-    /// other than Unity's main thread.
-    /// </summary>
-    /// <param name="textData">Text data to provide to the Enqueued IEnumerator function</param>
-    private void AddTextToUiFromAsync(string textData)
-    {
-      UnityMainThreadDispatcher.Instance().Enqueue(AddTMPTextOnMainThread(textData));
-    }
 
     /// <summary>
     /// This method handles the task of calling the remote gRPC Service GetFeature, passing a Message Type of
@@ -78,11 +45,11 @@ public class RouteGuideUnityClient
         {
             var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             var returnVal = await _client.GetFeatureAsync(pointOfInterest, cancellationToken: cts.Token);
-            AddTextToUi(returnVal.Name);
+            _myRouteGuideUiHandler.AddTextToUi(returnVal.Name, false);
         }
         catch (RpcException e)
         {
-            AddTextToUi("GetFeature Service is unavailable. " + e.Message);
+            _myRouteGuideUiHandler.AddTextToUi("GetFeature Service is unavailable. " + e.Message, false);
         }
 
 #if DEBUG
@@ -96,7 +63,7 @@ public class RouteGuideUnityClient
     /// </summary>
     /// <param name="areaOfInterest">A Routeguide Rectangle containing two Points</param>
     /// <returns></returns>
-    public async Task ListFeatures(Routeguide.Rectangle areaOfInterest, bool streamLoadUI)
+    public async Task ListFeatures(Routeguide.Rectangle areaOfInterest)
     {
         Debug.Log("ListFeatures Client Lo latitude: " + areaOfInterest.Lo.Latitude +
                   ",  Lo longitude: " + areaOfInterest.Lo.Longitude + "\n" +
@@ -114,24 +81,13 @@ public class RouteGuideUnityClient
                 var thisItemName = response.ResponseStream.Current.Name;
                 if (!String.IsNullOrEmpty(thisItemName))
                 {
-                    responseText.AppendLine(thisItemName);
-                    //Updating the UI here as each new Message from the stream comes in is visually nice/responsive,
-                    //but it does have a pretty dramatic impact on Unity app performance, resulting in reduced framerate while
-                    //updates are streaming in. 
-                    //The streamLoadUI bool option parameter passed in controls whether this happens. 
-                    if (streamLoadUI)
-                        AddTextToUi(responseText.ToString());
+                    _myRouteGuideUiHandler.AddTextToUi(thisItemName, false);
                 }
             }
-
-            //Updating all the 'accumulated' Messages from the response stream is less responsive, but 
-            //does allow the Unity app to maintain high framerate
-            if (!streamLoadUI)
-                AddTextToUi(responseText.ToString());
         }
         catch (RpcException e)
         {
-            AddTextToUi("ListFeatures Service is unavailable. " + e.Message);
+            _myRouteGuideUiHandler.AddTextToUi("ListFeatures Service is unavailable. " + e.Message, false);
         }
 
 #if DEBUG
@@ -152,7 +108,7 @@ public class RouteGuideUnityClient
         try
         {
             var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-           //Sending and Receiving will be sequential - send/stream all first, then receive
+            //Sending and Receiving will be sequential - send/stream all first, then receive
             var thisStream = _client.RecordRoute(cancellationToken: cts.Token);
             foreach (var t in pointsOfInterest)
             {
@@ -165,7 +121,7 @@ public class RouteGuideUnityClient
             var myResultSummary = summary.ToString();
             if (!String.IsNullOrEmpty(myResultSummary))
             {
-                AddTextToUi(myResultSummary);
+                _myRouteGuideUiHandler.AddTextToUi(myResultSummary, false);
             }
             else
             {
@@ -176,7 +132,7 @@ public class RouteGuideUnityClient
         }
         catch (RpcException e)
         {
-            AddTextToUi("RecordRoute Service is unavailable. " + e.Message);
+            _myRouteGuideUiHandler.AddTextToUi("RecordRoute Service is unavailable. " + e.Message, false);
         }
 
 #if DEBUG
@@ -200,24 +156,12 @@ public class RouteGuideUnityClient
             //only return when both are complete.
             var responseReaderTask = Task.Run(async () =>
             {
-                StringBuilder responseText = new StringBuilder();
                 while (await thisStream.ResponseStream.MoveNext())
                 {
-                    responseText.Append(thisStream.ResponseStream.Current.Message + "\n");
-                    //Updating the UI here as each new Message from the stream comes in is visually nice/responsive,
-                    //but it does have a pretty dramatic impact on Unity app performance, resulting in reduced framerate while
-                    //updates are streaming in. 
-                    //The streamLoadUI bool parameter passed in controls whether this happens. 
-                    if (streamLoadUI)
-                        //This AddText.. method is different, its capable of getting the UI updated from a different thread.
-                        AddTextToUiFromAsync(responseText.ToString());
+                    //This AddText.. method is different, its capable of getting the UI updated from a different thread.
+                    _myRouteGuideUiHandler.AddTextToUi(thisStream.ResponseStream.Current.Message, true);
                 }
 
-                //Updating all the 'accumulated' Messages from the response stream is less responsive, but 
-                //does allow the Unity app to maintain high framerate
-                if (!streamLoadUI)
-                    //This AddText.. method is different, its capable of getting the UI updated from a different thread.
-                    AddTextToUiFromAsync(responseText.ToString());
 #if DEBUG
                 Debug.Log("RouteChat RECEIVE messages complete");
 #endif
@@ -236,7 +180,7 @@ public class RouteGuideUnityClient
         }
         catch (RpcException e)
         {
-            AddTextToUi("RouteChat Service is unavailable. " + e.Message);
+            _myRouteGuideUiHandler.AddTextToUi("RouteChat Service is unavailable. " + e.Message, false);
         }
 
 #if DEBUG

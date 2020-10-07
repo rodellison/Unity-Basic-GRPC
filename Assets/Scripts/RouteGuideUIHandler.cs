@@ -1,24 +1,79 @@
 ﻿using System;
+using System.Collections;
+using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using Routeguide;
+using UnityEngine.PlayerLoop;
 using UnityEngine.Serialization;
 
 public class RouteGuideUIHandler : MonoBehaviour
 {
-    [FormerlySerializedAs("gRPC_Host")] public string gRpcHost = "127.0.0.1";
-    [FormerlySerializedAs("gRPC_Port")] public string gRpcPort = "10000";
+    [SerializeField] private string gRpcHost = "127.0.0.1";
 
-    [SerializeField] private TextMeshProUGUI myTextMeshProUGui;
+    [SerializeField] private string gRpcPort = "10000";
+
     private RouteGuideUnityClient _routeGuideClient;
+
+    [SerializeField] private GameObject _textPrefab;
+    [SerializeField] private GameObject _contentParent;
+
+
+    // Callback signature
+    // Has: Return of type 'void' and 1 parameter of type 'string'
+    public delegate void UICallback(string message, bool async);
+
+    // Event declaration
+    public event UICallback OnUICallback;
+
+    /// <summary>
+    /// The AddTMPTextOnMainThread IEnumerator is a coroutine to be used (by way of another component -
+    /// UnityMainThreadDispatcher), as the code to run on the main thread, which updates the Unity UI.
+    /// </summary>
+    /// <param name="textDataToAdd">Text data to have added to the TMP Text UI component</param>
+    /// <returns></returns>
+    private IEnumerator AddTMPTextOnMainThread(string textDataToAdd)
+    {
+        var newTMPText = GameObject.Instantiate(_textPrefab, _contentParent.transform);
+        newTMPText.GetComponent<TextMeshProUGUI>().SetText(textDataToAdd);
+        yield return null;
+    }
+
+    /// <summary>
+    /// AddTextToUI is the method that will handle updating the UI.
+    /// </summary>
+    /// <param name="textData">Text data to provide to the Enqueued IEnumerator function</param>
+    /// <param name="async">bool value to instruct whether to use the Thread Dispatcher to update UI</param>
+    public void AddTextToUi(string textData, bool async)
+    {
+        if (async)
+        {
+            UnityMainThreadDispatcher.Instance().Enqueue(AddTMPTextOnMainThread(textData));
+        }
+        else
+        {
+            var newTMPText = GameObject.Instantiate(_textPrefab, _contentParent.transform);
+            newTMPText.GetComponent<TextMeshProUGUI>().SetText(textData);
+        }
+    }
 
     private void Start()
     {
-        //Allowing the RouteGuideUnityClient the ability to send output to the Text component directly, by passing
-        //a reference to the TMP as input.
-        _routeGuideClient = new RouteGuideUnityClient(gRpcHost, gRpcPort, myTextMeshProUGui);
+        _routeGuideClient = new RouteGuideUnityClient(gRpcHost, gRpcPort, this);
+        OnUICallback += AddTextToUi;
     }
-    
+
+    /// <summary>
+    /// Method to clear out previous TMP Text controls from the Content parent
+    /// </summary>
+    private void ClearTMPTextChildren()
+    {
+        foreach (Transform child in _contentParent.transform)
+        {
+            GameObject.Destroy(child.gameObject);
+        }
+    }
+
     /// <summary>
     /// This method front ends a gRPC client method which makes a call to the remote gRPC server, passing a POINT
     /// Message type, and subsequently having the server response be the Feature Point's Name.
@@ -26,7 +81,7 @@ public class RouteGuideUIHandler : MonoBehaviour
     /// </summary>
     public async void GetSingleFeature()
     {
-
+        ClearTMPTextChildren();
         var pointOfInterest = new Routeguide.Point {Latitude = 409146138, Longitude = -746188906};
         await _routeGuideClient.GetFeature(pointOfInterest);
 
@@ -43,6 +98,8 @@ public class RouteGuideUIHandler : MonoBehaviour
     /// data should be loaded AS-IT-RETURNS, or, whether to collect and load it in one shot.</param>
     public async void GetMultipleFeatures(bool streamLoadUI)
     {
+        ClearTMPTextChildren();
+
         var pointOfInterestLo = new Routeguide.Point {Latitude = 400000000, Longitude = -750000000};
         var pointOfInterestHi = new Routeguide.Point {Latitude = 420000000, Longitude = -730000000};
 
@@ -52,7 +109,7 @@ public class RouteGuideUIHandler : MonoBehaviour
             Hi = pointOfInterestHi,
         };
 
-        await _routeGuideClient.ListFeatures(areaOfInterest, streamLoadUI);
+        await _routeGuideClient.ListFeatures(areaOfInterest);
 
         Debug.Log("GetMultipleFeatures Finished");
     }
@@ -65,6 +122,7 @@ public class RouteGuideUIHandler : MonoBehaviour
     /// </summary>
     public async void GetPointsRouteSummary()
     {
+        ClearTMPTextChildren();
 
         var pointCount = UnityEngine.Random.Range(1, 100) + 1; // Traverse at least two points
         var points = new Routeguide.Point[pointCount];
@@ -90,8 +148,8 @@ public class RouteGuideUIHandler : MonoBehaviour
     /// data should be loaded AS-IT-RETURNS, or, whether to collect and load it in one shot.</param>
     public async void RunRouteChat(bool streamLoadUI)
     {
- 
-       
+        ClearTMPTextChildren();
+
         //Create bunch of Notes (each note contains a Point, and a Name), that will be 
         //sent over via a STREAM
         RouteNote[] notes = new RouteNote[]
