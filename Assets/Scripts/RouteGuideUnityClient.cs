@@ -1,4 +1,4 @@
-#define DEBUG
+//#define DEBUG
 
 using System;
 using System.Collections;
@@ -146,7 +146,7 @@ public class RouteGuideUnityClient
     /// </summary>
     /// <param name="notesOfInterest"></param>
     /// <returns></returns>
-    public async Task RouteChat(Routeguide.RouteNote[] notesOfInterest, bool streamLoadUI)
+    public async Task RouteChat(Routeguide.RouteNote[] notesOfInterest)
     {
         try
         {

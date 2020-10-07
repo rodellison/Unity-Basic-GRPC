@@ -20,7 +20,6 @@ public class RouteGuideUIHandler : MonoBehaviour
 
 
     // Callback signature
-    // Has: Return of type 'void' and 1 parameter of type 'string'
     public delegate void UICallback(string message, bool async);
 
     // Event declaration
@@ -55,6 +54,15 @@ public class RouteGuideUIHandler : MonoBehaviour
             var newTMPText = GameObject.Instantiate(_textPrefab, _contentParent.transform);
             newTMPText.GetComponent<TextMeshProUGUI>().SetText(textData);
         }
+    }
+
+    private void Awake()
+    {
+#if UNITY_EDITOR   //do this to ensure Debug oriented logging doesn't occur when running outside of editor...
+        Debug.unityLogger.logEnabled = true;
+#else
+        Debug.unityLogger.logEnabled = false;
+#endif
     }
 
     private void Start()
@@ -92,11 +100,9 @@ public class RouteGuideUIHandler : MonoBehaviour
     /// This method front ends a gRPC client method which makes a call to the remote gRPC server, passing a SET of
     /// Two POINTs within a Rectangle Message Type. 
     /// The response from the gRPC server is an asynchronous STREAM of Feature Message types
-    /// Essentially - Single Client REQUEST/Server-side asyncrhonous response STREAM
+    /// Essentially - Single Client REQUEST/Server-side asynchronous response STREAM
     /// </summary>
-    /// <param name="streamLoadUI">Parameter provided by the UI to designate whether the loading of streamed response
-    /// data should be loaded AS-IT-RETURNS, or, whether to collect and load it in one shot.</param>
-    public async void GetMultipleFeatures(bool streamLoadUI)
+    public async void GetMultipleFeatures()
     {
         ClearTMPTextChildren();
 
@@ -144,9 +150,7 @@ public class RouteGuideUIHandler : MonoBehaviour
     /// SIMULTANEOUSLY, The response from the gRPC server is an asynchronous STREAM of the collected Route Notes.
     /// Essentially - BI-DIRECTIONAL Client and Server STREAMING
     /// </summary>
-    /// <param name="streamLoadUI">Parameter provided by the UI to designate whether the loading of streamed response
-    /// data should be loaded AS-IT-RETURNS, or, whether to collect and load it in one shot.</param>
-    public async void RunRouteChat(bool streamLoadUI)
+    public async void RunRouteChat()
     {
         ClearTMPTextChildren();
 
@@ -186,7 +190,7 @@ public class RouteGuideUIHandler : MonoBehaviour
             }
         };
 
-        await _routeGuideClient.RouteChat(notes, streamLoadUI);
+        await _routeGuideClient.RouteChat(notes);
         Debug.Log("RunRouteChat Finished");
     }
 
